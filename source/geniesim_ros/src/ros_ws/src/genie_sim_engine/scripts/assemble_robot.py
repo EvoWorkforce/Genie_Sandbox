@@ -1241,6 +1241,101 @@ def _apply_post_transformer_material_overrides(
     return n
 
 
+def _apply_post_transformer_variant_selection(
+    usd_path: str,
+    default_variant: str = "physx",
+    logger=None,
+) -> bool:
+    """Ensure ``robot.usda``'s ``Physics`` variant set carries a default selection.
+
+    The AS3 transformer (``importer_utils.run_asset_transformer_profile``,
+    driven by the vendor's ``isaacsim_structure.json`` profile) is supposed
+    to author the root prim's default selection itself — see
+    ``docs/asset_consumption.md`` lines 25-36:
+
+    .. code-block:: usda
+
+        def Xform "robot" (
+            prepend references = @./payloads/base.usda@
+            variants = { string Physics = "physx" }    ← default selection
+            append variantSets = "Physics"
+        )
+
+    When the transformer emits the ``variantSets = "Physics"`` declaration
+    but leaves the selection itself unauthored, USD composes **no** branch
+    of the variant at all: none of ``payloads/Physics/{physx,physics,mujoco}
+    .usda``'s opinions apply, so the stage ends up with zero
+    ``RigidBodyAPI`` / ``ArticulationRootAPI`` prims anywhere under the
+    robot root. That is silent at build time (this function, along with
+    ``_apply_post_transformer_collision_policy`` and
+    ``_apply_mimic_joint_overlay``, just walks an empty match set and
+    reports zero counts) and only surfaces at runtime as
+    ``kit/stage.py``'s ``[fix_base] no RigidBodyAPI descendant`` warning
+    followed by PhysX's ``Failed to find articulation`` — by which point
+    every ``/joint_states`` and ``/joint_command`` message is empty.
+
+    This is a repo-side safety net, not a substitute for fixing the
+    transformer profile: if the ``Physics`` variant set is missing
+    entirely (not just its default selection), that's a different,
+    upstream defect and this function only warns — it does not fabricate
+    a variant set the transformer never created.
+    """
+    from pxr import Usd  # noqa: E402
+
+    stage = Usd.Stage.Open(usd_path)
+    if stage is None:
+        if logger is not None:
+            logger.warn(f"[variant] post-transformer: could not open {usd_path}; selection not checked.")
+        return False
+
+    root_prim = stage.GetDefaultPrim()
+    if not root_prim or not root_prim.IsValid():
+        if logger is not None:
+            logger.warn(f"[variant] post-transformer: {usd_path} has no default prim; selection not checked.")
+        return False
+
+    variant_sets = root_prim.GetVariantSets()
+    if "Physics" not in variant_sets.GetNames():
+        if logger is not None:
+            logger.warn(
+                f"[variant] post-transformer: {root_prim.GetPath()} carries no "
+                f"'Physics' variant set — transformer profile did not author one; "
+                f"leaving untouched."
+            )
+        return False
+
+    physics_vset = variant_sets.GetVariantSet("Physics")
+    current = physics_vset.GetVariantSelection()
+    if current:
+        if logger is not None:
+            logger.info(f"[variant] post-transformer: Physics variant already selected ({current!r}).")
+        return False
+
+    if default_variant not in physics_vset.GetVariantNames():
+        if logger is not None:
+            logger.warn(
+                f"[variant] post-transformer: default variant {default_variant!r} not "
+                f"among {physics_vset.GetVariantNames()!r}; selection not set."
+            )
+        return False
+
+    physics_vset.SetVariantSelection(default_variant)
+    try:
+        stage.GetRootLayer().Save()
+    except Exception as exc:
+        if logger is not None:
+            logger.warn(f"[variant] post-transformer: could not save {usd_path}: {exc}")
+        return False
+
+    if logger is not None:
+        logger.warn(
+            f"[variant] post-transformer: Physics variant set had no default selection "
+            f"— transformer profile regression; backfilled {default_variant!r} so the "
+            f"robot isn't shipped schema-less."
+        )
+    return True
+
+
 def _apply_post_transformer_collision_policy(usd_path: str, logger=None) -> dict:
     """Run the selective collision policy AGAINST THE FINAL ``robot.usda``.
 
@@ -1573,6 +1668,12 @@ def _convert_urdf_to_usd_60(
         # time, so both PhysX (via IsaacSimStage) and Newton's
         # add_usd see the policy without re-running the transformer.
         if os.path.isfile(usd_path):
+            # Must run before collision policy / mimic overlay below: both
+            # of those walk the stage for RigidBodyAPI / joint schemas and
+            # silently no-op (zero counts, no error) if the Physics variant
+            # set has no default selection composed in yet. See
+            # ``_apply_post_transformer_variant_selection`` for why.
+            _apply_post_transformer_variant_selection(usd_path, logger=_local_logger)
             _apply_post_transformer_collision_policy(usd_path, logger=_local_logger)
             # Apply parsed <visual><material_override> blocks against
             # the FINAL robot.usda (root layer overrides over the
