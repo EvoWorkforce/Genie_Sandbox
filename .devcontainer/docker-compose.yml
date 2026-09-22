@@ -1,0 +1,46 @@
+services:
+  geniesim:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.5.1
+    image: registry.agibot.com/genie-sim/geniesim3:latest
+    init: true
+    privileged: true
+    network_mode: host
+    # Requires the NVIDIA Container Toolkit on the host.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+    environment:
+      ACCEPT_EULA: "Y"
+      OMNI_KIT_ACCEPT_EULA: "Y"
+      PRIVACY_CONSENT: "Y"
+      # TODO: export these on the host before `devcontainer up` so files
+      # created in the container are owned by you, not uid/gid 1234.
+      HOST_UID: "${UID:-1000}"
+      HOST_GID: "${GID:-1000}"
+      ROS_DISTRO: jazzy
+      GENIESIM_PY_CMD: omni_python
+      GENIESIM_BREAK_SYSTEM_PKGS: "0"
+      DISPLAY: "${DISPLAY:-}"
+    volumes:
+      - ..:/workspace:rw
+      - ../docker/entrypoint.sh:/usr/local/bin/geniesim-entrypoint:ro
+      - /home/evo/GenieSimAssets:/geniesim_assets:rw
+      # Isaac Sim cache — matches docker/start.sh's default GENIESIM_CACHE_ROOT.
+      - ${HOME}/docker/isaac-sim/cache/main:/home/isaac-sim/.cache:rw
+      - ${HOME}/docker/isaac-sim/cache/computecache:/home/isaac-sim/.nv/ComputeCache:rw
+      - ${HOME}/docker/isaac-sim/logs:/home/isaac-sim/.nvidia-omniverse/logs:rw
+      - ${HOME}/docker/isaac-sim/config:/home/isaac-sim/.nvidia-omniverse/config:rw
+      - ${HOME}/docker/isaac-sim/data:/home/isaac-sim/.local/share/ov/data:rw
+      - ${HOME}/docker/isaac-sim/pkg:/home/isaac-sim/.local/share/ov/pkg:rw
+      # GUI passthrough — drop these three if you only need headless.
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/home/isaac-sim/.Xauthority:ro
+      - /dev/input:/dev/input:rw
+    working_dir: /workspace
+    command: [ "sleep", "infinity" ]

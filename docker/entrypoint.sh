@@ -64,12 +64,22 @@ if [ "$(id -u)" = "0" ] && { [ "${HOST_UID}" != "1234" ] || [ "${HOST_GID}" != "
         groupdel "${EXISTING_GROUP}" 2>/dev/null || true
     fi
 
+    # usermod/groupmod refuse to renumber a user/group while any process on
+    # the system holds that uid/gid ("user isaac-sim is currently used by
+    # process N", exit 8). Under the VS Code devcontainer CLI this races:
+    # it execs probe commands into the container as "isaac-sim" (uid 1234)
+    # immediately after start, before this script gets here, so the safety
+    # check can trip on the CLI's own exec. Edit the passwd/group files
+    # directly instead — a plain text edit, no liveness check — so the
+    # remap can't lose that race.
     if [ "${HOST_GID}" != "1234" ]; then
-        groupmod -g "${HOST_GID}" "${TARGET_USER}"
+        sed -i "s/^\(${TARGET_USER}:[^:]*:\)[0-9]*:/\1${HOST_GID}:/" /etc/group
     fi
 
     if [ "${HOST_UID}" != "1234" ]; then
-        usermod -u "${HOST_UID}" -d /home/isaac-sim "${TARGET_USER}"
+        awk -F: -v OFS=: -v u="${TARGET_USER}" -v newuid="${HOST_UID}" -v newgid="${HOST_GID}" -v newhome="/home/isaac-sim" \
+            '$1==u { $3=newuid; $4=newgid; $6=newhome } { print }' /etc/passwd >/etc/passwd.new \
+            && mv /etc/passwd.new /etc/passwd
     fi
 
     mkdir -p /home/isaac-sim
