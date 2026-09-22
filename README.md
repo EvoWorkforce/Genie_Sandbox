@@ -1,3 +1,12 @@
+# Setup Guide
+
+- Clone this repository
+
+- Get the assets necessary to run the simulations (must be in /home/<user>/)
+```bash
+  git clone https://huggingface.co/datasets/agibot-world/GenieSimAssets 
+```
+
 ![image.png](./docs/image.png)
 
 <div align="center">
