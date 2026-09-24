@@ -30,7 +30,8 @@ services:
     volumes:
       - ..:/workspace:rw
       - ../docker/entrypoint.sh:/usr/local/bin/geniesim-entrypoint:ro
-      - /home/evo/GenieSimAssets:/geniesim_assets:rw
+
+      - ${HOME}/GenieSimAssets:/geniesim_assets:rw
       # Isaac Sim cache — matches docker/start.sh's default GENIESIM_CACHE_ROOT.
       - ${HOME}/docker/isaac-sim/cache/main:/home/isaac-sim/.cache:rw
       - ${HOME}/docker/isaac-sim/cache/computecache:/home/isaac-sim/.nv/ComputeCache:rw

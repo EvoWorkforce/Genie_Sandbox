@@ -6,6 +6,26 @@
 ```bash
   git clone https://huggingface.co/datasets/agibot-world/GenieSimAssets 
 ```
+- Inside the container:
+```
+geniesim status                         
+geniesim doctor                          
+geniesim bootstrap                       
+```
+
+## Test
+
+- Open the simulator with a created scene
+```
+geniesim ros build dev
+source devel/setup.bash
+
+ros2 launch genie_sim_bringup app.launch.py \
+  scene:=test_scene \
+  launcher_config:=launcher_ovrtx_isaac_physx \
+  headless:=false
+```
+# Original README
 
 ![image.png](./docs/image.png)
 
