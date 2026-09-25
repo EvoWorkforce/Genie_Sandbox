@@ -184,7 +184,13 @@ RUN --mount=type=cache,target=/root/.cache/pip,sharing=locked \
     rm -rf /tmp/collect_deps.py /tmp/source /tmp/geniesim_deps.txt
 
 # Pin numpy/scipy for omni_python — Isaac Sim 5.1 requires specific versions.
-RUN omni_python -m pip install --force-reinstall --no-cache-dir "numpy==1.26.4" "scipy==1.13.1"
+# Use the bare kit interpreter, NOT omni_python: python.sh puts the extension
+# pip_prebundle dirs on sys.path, so --force-reinstall would uninstall the
+# prebundled scipy from exts/omni.pip.compute and break the libgfortran symlink
+# that Kit's own numpy (omni.kit.pip_archive) points at.
+RUN env -u PYTHONPATH /isaac-sim/kit/python/bin/python3 -m pip install --force-reinstall --no-cache-dir "numpy==1.26.4" "scipy==1.13.1" && \
+    broken="$(find /isaac-sim/exts /isaac-sim/extscache -xtype l -path '*pip_prebundle*')" && \
+    if [ -n "$broken" ]; then echo "[build] broken pip_prebundle symlinks:\n$broken" >&2; exit 1; fi
 
 COPY ./3rdparty/ik_solver-0.4.3-cp311-cp311-linux_x86_64.whl /tmp/ik_solver-0.4.3-cp311-cp311-linux_x86_64.whl
 RUN omni_python -m pip install /tmp/ik_solver-0.4.3-cp311-cp311-linux_x86_64.whl

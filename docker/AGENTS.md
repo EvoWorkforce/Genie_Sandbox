@@ -38,6 +38,12 @@ renaming images, containers, or CLI dispatch.
 - `typing_extensions.py` patch applied for the 6.0 install.
 - GeneSim deps installed into **both** interpreters at runtime (entrypoint.sh).
 - numpy/scipy pinned for `omni_python`: `numpy==1.26.4`, `scipy==1.13.1`.
+  The pin runs via the bare `/isaac-sim/kit/python/bin/python3` with `PYTHONPATH`
+  unset — running it through `omni_python` lets pip uninstall the prebundled scipy
+  in `exts/omni.pip.compute`, leaving Kit's numpy with a dangling `libgfortran`
+  symlink ("Error importing numpy: you should not try to import numpy from its
+  source directory" on Isaac Sim startup). The build fails if any
+  `pip_prebundle` symlink is dangling.
 - Runtime default interpreter (`GENIESIM_PY_CMD`) is `omni_python`; use `python3` for 6.0 features.
 
 **Dockerfile.4.5**
