@@ -73,6 +73,15 @@ Key subscriptions / publications:
   the legacy `prefix + basename` fallback stays as defensive code but is
   unreachable for any payload published by the current
   `genie_sim_engine`.
+  Camera / lidar mounts (`/RenderOVRTX/Cameras/<body>`, `/RenderOVRTX/Lidars/<body>`)
+  sit **outside** the robot hierarchy, so `render_ovrtx` matches them to a
+  body by prim **basename** and writes that body's **world** pose, composed
+  from the robot root (`robot_init_base_pose`) and every ancestor's local
+  pose in the same message (ancestors absent from it, e.g. `/<prefix>/Geometry`,
+  count as identity). The engine also references the render layer into the
+  Kit stage; there, `isaac_physx` moves the same mounts every tick
+  (`kit/stage.py:IsaacSimStage.sync_sensor_mounts`, called from
+  `tick_extras`) so a Kit viewport switched to a sensor camera follows its link.
 - Subscribes `~/free_cam_pose` — moves the free-fly camera
 - Publishes `<topic>/image_raw` + `<topic>/camera_info` per manifest camera
 
@@ -96,6 +105,7 @@ Both backends read the same `manifest.json` fields:
 | `robot_usda` | Robot USD to reference in |
 | `render_layer_usda` | Render-product layer (cameras + RenderProducts) |
 | `robot_prefix` | Prim namespace for the robot (`/<robot_prefix>`) |
+| `robot_init_base_pose` | Scene yaml `robot.init_base_pose` (`x`, `y`, `z`, `theta`). The engine authors it on the physics stage's `/<robot_prefix>` root, which `/tf_render` never carries; `render_ovrtx` writes it onto the render stage's root and composes camera / lidar mount world poses on top of it |
 | `free_cam_prim_path` | Path to the free-fly camera prim |
 | `base_path` | Anchor for resolving relative paths |
 | `cameras[]` | Per-camera: `topic`, `depth_topic`, `render_product_path`, `path`, `frame_id`, `width`, `height`, intrinsics |

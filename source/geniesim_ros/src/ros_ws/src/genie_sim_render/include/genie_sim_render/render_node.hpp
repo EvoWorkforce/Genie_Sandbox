@@ -131,6 +131,10 @@ private:
   std::string robot_usda_;
   std::string render_layer_usda_;
   std::string robot_prefix_;
+  // World pose of /<robot_prefix> (manifest robot_init_base_pose). The engine authors it on the
+  // physics stage's robot root, which /tf_render never carries; /tf_render link poses are local
+  // to their USD parent, so camera/lidar world poses are composed on top of this.
+  ovrtx_xform_matrix44d_t robot_root_world_{};
   double render_fps_;
   std::vector<std::string> prim_paths_;
   std::vector<CameraConfig> cameras_;

@@ -95,6 +95,42 @@ static const ovrtx_render_var_tensor_t * find_pc_tensor(
   return nullptr;
 }
 
+// Pose -> 4x4 in USD row-vector layout (rows = basis vectors, translation in v[12..14]).
+static ovrtx_xform_matrix44d_t pose_to_xform(
+  double qx, double qy, double qz, double qw, double tx, double ty, double tz)
+{
+  double xx = qx * qx, yy = qy * qy, zz = qz * qz;
+  double xy = qx * qy, xz = qx * qz, yz = qy * qz;
+  double wx = qw * qx, wy = qw * qy, wz = qw * qz;
+
+  ovrtx_xform_matrix44d_t xform{};
+  auto & m = xform.v;
+  m[0] = 1.0 - 2.0 * (yy + zz); m[1] = 2.0 * (xy + wz);       m[2] = 2.0 * (xz - wy);
+  m[3] = 0.0;
+  m[4] = 2.0 * (xy - wz);       m[5] = 1.0 - 2.0 * (xx + zz); m[6] = 2.0 * (yz + wx);
+  m[7] = 0.0;
+  m[8] = 2.0 * (xz + wy);       m[9] = 2.0 * (yz - wx);       m[10] = 1.0 - 2.0 * (xx + yy);
+  m[11] = 0.0;
+  m[12] = tx;                     m[13] = ty;                     m[14] = tz;
+  m[15] = 1.0;
+  return xform;
+}
+
+// a * b in row-vector convention: world = local * parent_world.
+static ovrtx_xform_matrix44d_t mul_xform(
+  const ovrtx_xform_matrix44d_t & a, const ovrtx_xform_matrix44d_t & b)
+{
+  ovrtx_xform_matrix44d_t c{};
+  for (int i = 0; i < 4; ++i) {
+    for (int j = 0; j < 4; ++j) {
+      double s = 0.0;
+      for (int k = 0; k < 4; ++k) {s += a.v[i * 4 + k] * b.v[k * 4 + j];}
+      c.v[i * 4 + j] = s;
+    }
+  }
+  return c;
+}
+
 RenderNode::RenderNode(const rclcpp::NodeOptions & options)
 : Node("genie_sim_render", options)
 {
@@ -211,6 +247,14 @@ void RenderNode::load_manifest(const std::string & manifest_path)
   robot_usda_ = resolve_rel(manifest.value("robot_usda", ""));
   render_layer_usda_ = resolve_rel(manifest.value("render_layer_usda", ""));
   robot_prefix_ = manifest.value("robot_prefix", "");
+  {
+    // Same x/y/z + yaw(theta) semantics as kit/stage.py:_apply_init_base_pose.
+    const json base = manifest.value("robot_init_base_pose", json::object());
+    const double half = 0.5 * base.value("theta", 0.0);
+    robot_root_world_ = pose_to_xform(
+      0.0, 0.0, std::sin(half), std::cos(half),
+      base.value("x", 0.0), base.value("y", 0.0), base.value("z", 0.0));
+  }
   free_cam_prim_path_ = manifest.value("free_cam_prim_path", "");
 
   RCLCPP_INFO(
@@ -558,43 +602,18 @@ void RenderNode::on_tf_render(const tf2_msgs::msg::TFMessage::SharedPtr msg)
   size_t tf_count = msg->transforms.size();
   std::vector<std::string> paths;
   std::vector<ovrtx_xform_matrix44d_t> xforms;
-  paths.reserve(tf_count + cam_body_to_render_path_.size());
-  xforms.reserve(tf_count + cam_body_to_render_path_.size());
+  paths.reserve(tf_count + cam_body_to_render_path_.size() + lidar_body_to_render_path_.size() + 1);
+  xforms.reserve(tf_count + cam_body_to_render_path_.size() + lidar_body_to_render_path_.size() + 1);
 
+  // Pass 1: write every body's parent-local pose to its own prim (USD composition places it).
+  std::unordered_map<std::string, ovrtx_xform_matrix44d_t> local_by_path;
+  local_by_path.reserve(tf_count);
   for (size_t i = 0; i < tf_count; ++i) {
     const auto & tf = msg->transforms[i];
     const std::string & body_name = tf.child_frame_id;
-
-    double qx = tf.transform.rotation.x;
-    double qy = tf.transform.rotation.y;
-    double qz = tf.transform.rotation.z;
-    double qw = tf.transform.rotation.w;
-    double tx = tf.transform.translation.x;
-    double ty = tf.transform.translation.y;
-    double tz = tf.transform.translation.z;
-
-    // Capture base_link's world pose so we can publish the dynamic base_link->world TF below.
-    if (body_name == "base_link") {
-      base_link_world_q_[0] = qx; base_link_world_q_[1] = qy;
-      base_link_world_q_[2] = qz; base_link_world_q_[3] = qw;
-      base_link_world_t_[0] = tx; base_link_world_t_[1] = ty; base_link_world_t_[2] = tz;
-      has_base_link_world_ = true;
-    }
-
-    double xx = qx * qx, yy = qy * qy, zz = qz * qz;
-    double xy = qx * qy, xz = qx * qz, yz = qy * qz;
-    double wx = qw * qx, wy = qw * qy, wz = qw * qz;
-
-    ovrtx_xform_matrix44d_t xform{};
-    auto & m = xform.v;
-    m[0] = 1.0 - 2.0 * (yy + zz); m[1] = 2.0 * (xy + wz);       m[2] = 2.0 * (xz - wy);
-    m[3] = 0.0;
-    m[4] = 2.0 * (xy - wz);       m[5] = 1.0 - 2.0 * (xx + zz); m[6] = 2.0 * (yz + wx);
-    m[7] = 0.0;
-    m[8] = 2.0 * (xz + wy);       m[9] = 2.0 * (yz - wx);       m[10] = 1.0 - 2.0 * (xx + yy);
-    m[11] = 0.0;
-    m[12] = tx;                     m[13] = ty;                     m[14] = tz;
-    m[15] = 1.0;
+    const auto & r = tf.transform.rotation;
+    const auto & t = tf.transform.translation;
+    ovrtx_xform_matrix44d_t xform = pose_to_xform(r.x, r.y, r.z, r.w, t.x, t.y, t.z);
 
     std::string prim_path;
     if (body_name.rfind("/World", 0) == 0 || body_name.rfind("/", 0) == 0) {
@@ -603,19 +622,83 @@ void RenderNode::on_tf_render(const tf2_msgs::msg::TFMessage::SharedPtr msg)
       prim_path = "/" + robot_prefix_ + "/" + body_name;
     }
 
+    local_by_path[prim_path] = xform;
     paths.push_back(prim_path);
     xforms.push_back(xform);
+  }
 
-    auto it = cam_body_to_render_path_.find(body_name);
-    if (it != cam_body_to_render_path_.end()) {
-      paths.push_back(it->second);
-      xforms.push_back(xform);
+  // The engine places the robot root on the physics stage only; mirror it here.
+  const std::string root_path = "/" + robot_prefix_;
+  paths.push_back(root_path);
+  xforms.push_back(robot_root_world_);
+
+  // World pose of a body = its local pose composed through every ancestor in this message,
+  // on top of the robot root. Ancestors absent from the message (organisational scopes such
+  // as /<prefix>/Geometry) are taken as identity, which is how the converters author them.
+  auto world_of = [&](const std::string & prim_path) {
+    const bool under_root = prim_path.rfind(root_path + "/", 0) == 0;
+    ovrtx_xform_matrix44d_t w{};
+    if (under_root) {
+      w = robot_root_world_;
+    } else {
+      w.v[0] = w.v[5] = w.v[10] = w.v[15] = 1.0;
     }
+    size_t pos = under_root ? root_path.size() : 0;
+    while ((pos = prim_path.find('/', pos + 1)) != std::string::npos) {
+      auto it = local_by_path.find(prim_path.substr(0, pos));
+      if (it != local_by_path.end()) {w = mul_xform(it->second, w);}
+    }
+    auto it = local_by_path.find(prim_path);
+    if (it != local_by_path.end()) {w = mul_xform(it->second, w);}
+    return w;
+  };
 
-    auto lit = lidar_body_to_render_path_.find(body_name);
+  // Pass 2: camera / lidar mount xforms live outside the robot hierarchy (under /RenderOVRTX),
+  // so they need the body's world pose. Bodies are matched by prim basename, since
+  // child_frame_id is an absolute (possibly deeply nested) USD path.
+  for (const auto & [prim_path, local] : local_by_path) {
+    (void)local;
+    const std::string body = prim_path.substr(prim_path.find_last_of('/') + 1);
+    auto cit = cam_body_to_render_path_.find(body);
+    auto lit = lidar_body_to_render_path_.find(body);
+    const bool is_base = body == "base_link";
+    if (cit == cam_body_to_render_path_.end() && lit == lidar_body_to_render_path_.end() &&
+      !is_base)
+    {
+      continue;
+    }
+    const ovrtx_xform_matrix44d_t w = world_of(prim_path);
+    if (cit != cam_body_to_render_path_.end()) {
+      paths.push_back(cit->second);
+      xforms.push_back(w);
+    }
     if (lit != lidar_body_to_render_path_.end()) {
       paths.push_back(lit->second);
-      xforms.push_back(xform);
+      xforms.push_back(w);
+    }
+    if (is_base) {
+      // base_link's world pose drives the dynamic base_link->world TF published with the lidar.
+      const auto & m = w.v;
+      base_link_world_t_[0] = m[12]; base_link_world_t_[1] = m[13]; base_link_world_t_[2] = m[14];
+      // Row-vector rotation block -> quaternion (x, y, z, w).
+      const double trace = m[0] + m[5] + m[10];
+      double qx, qy, qz, qw;
+      if (trace > 0.0) {
+        const double s = 0.5 / std::sqrt(trace + 1.0);
+        qw = 0.25 / s; qx = (m[6] - m[9]) * s; qy = (m[8] - m[2]) * s; qz = (m[1] - m[4]) * s;
+      } else if (m[0] > m[5] && m[0] > m[10]) {
+        const double s = 2.0 * std::sqrt(1.0 + m[0] - m[5] - m[10]);
+        qw = (m[6] - m[9]) / s; qx = 0.25 * s; qy = (m[4] + m[1]) / s; qz = (m[8] + m[2]) / s;
+      } else if (m[5] > m[10]) {
+        const double s = 2.0 * std::sqrt(1.0 + m[5] - m[0] - m[10]);
+        qw = (m[8] - m[2]) / s; qx = (m[4] + m[1]) / s; qy = 0.25 * s; qz = (m[9] + m[6]) / s;
+      } else {
+        const double s = 2.0 * std::sqrt(1.0 + m[10] - m[0] - m[5]);
+        qw = (m[1] - m[4]) / s; qx = (m[8] + m[2]) / s; qy = (m[9] + m[6]) / s; qz = 0.25 * s;
+      }
+      base_link_world_q_[0] = qx; base_link_world_q_[1] = qy;
+      base_link_world_q_[2] = qz; base_link_world_q_[3] = qw;
+      has_base_link_world_ = true;
     }
   }
 

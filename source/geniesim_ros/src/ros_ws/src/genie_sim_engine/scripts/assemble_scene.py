@@ -1012,6 +1012,10 @@ def assemble_scene(
         "robot_usda": _rel(robot_usd_path),
         "robot_visual_usda": _rel(robot_visual_path),
         "robot_prefix": robot_prefix,
+        # The engine writes this onto /<robot_prefix> of the physics stage
+        # (kit/stage.py:_apply_init_base_pose); /tf_render never carries that
+        # root prim, so the render node applies it from here.
+        "robot_init_base_pose": robot_section.get("init_base_pose") or {},
         "robot_from_urdf": robot_from_urdf,
         "scene_yaml": cfg_path,
         "free_cam_prim_path": "/RenderOVRTX/Cameras/FreeCam",

@@ -115,7 +115,8 @@ class IsaacPhysXEngine(PhysicsEngine):
         return (time.monotonic() - t0) * 1000.0
 
     def tick_extras(self) -> None:
-        pass  # no-op for PhysX
+        # Render-layer camera / lidar mounts sit outside the robot; keep them on their links.
+        self._stage_obj.sync_sensor_mounts()
 
     def apply_commands(self, cmd_positions, cmd_4ws_steer_pos, cmd_4ws_drive_vel, cmd_4ws_stamp) -> None:
         self._stage_obj.apply_commands(

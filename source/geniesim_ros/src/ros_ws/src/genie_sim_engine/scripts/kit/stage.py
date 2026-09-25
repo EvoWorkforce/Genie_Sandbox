@@ -590,6 +590,44 @@ def _collect_body_paths(stage, robot_prefix: str) -> List[str]:
     return paths
 
 
+_SENSOR_MOUNT_ROOTS = ("/RenderOVRTX/Cameras", "/RenderOVRTX/Lidars")
+
+
+def _collect_sensor_mounts(stage, body_paths: List[str], logger) -> List[Tuple[Usd.Prim, Usd.Prim, UsdGeom.XformOp]]:
+    """Pair each render-layer sensor mount with the robot body it rides on.
+
+    ``assemble_scene`` authors camera / lidar mounts as ``/RenderOVRTX/Cameras/<body>`` and
+    ``/RenderOVRTX/Lidars/<body>``, **outside** the robot hierarchy and at identity. The
+    ``render_ovrtx`` node moves them from ``/tf_render``; on this Kit stage nothing does, so
+    without a per-tick sync a viewport switched to e.g. ``Head_Front_Camera`` sits at the world
+    origin (inside the robot base). Bodies are matched by prim basename, same as
+    ``render_node.cpp``.
+
+    Each mount gets a single ``xformOp:transform:sensorMount`` op that replaces its op order;
+    :meth:`IsaacSimStage.sync_sensor_mounts` writes the body's pose into it every tick.
+    """
+    body_by_name: Dict[str, str] = {p.rsplit("/", 1)[-1]: p for p in body_paths}
+    mounts: List[Tuple[Usd.Prim, Usd.Prim, UsdGeom.XformOp]] = []
+    for root_path in _SENSOR_MOUNT_ROOTS:
+        root = stage.GetPrimAtPath(root_path)
+        if not root or not root.IsValid():
+            continue
+        for mount in root.GetChildren():
+            if not mount.IsA(UsdGeom.Xform):
+                continue  # e.g. FreeCam, which is a Camera directly under Cameras
+            body_path = body_by_name.get(mount.GetName())
+            if body_path is None:
+                logger.warn(f"[stage] sensor mount {mount.GetPath()} has no matching robot body; left static")
+                continue
+            xformable = UsdGeom.Xformable(mount)
+            op_attr = mount.GetAttribute("xformOp:transform:sensorMount")
+            op = UsdGeom.XformOp(op_attr) if op_attr else xformable.AddTransformOp(opSuffix="sensorMount")
+            xformable.SetXformOpOrder([op])
+            mounts.append((mount, stage.GetPrimAtPath(body_path), op))
+            logger.info(f"[stage] sensor mount {mount.GetPath()} follows {body_path}")
+    return mounts
+
+
 def _collect_joints(stage) -> Tuple[List[str], Dict[str, str]]:
     joint_names: List[str] = []
     joint_prim_map: Dict[str, str] = {}
@@ -1973,6 +2011,7 @@ class IsaacSimStage:
         _apply_fix_base_policy(self.stage, robot_prefix, fix_base, logger)
 
         self.body_paths: List[str] = _collect_body_paths(self.stage, robot_prefix)
+        self._sensor_mounts = _collect_sensor_mounts(self.stage, self.body_paths, logger)
         if self._asset_format == "as3":
             self.joint_names, self._joint_prim_map = _collect_joints_as3(self.stage, robot_usda)
         else:
@@ -2283,6 +2322,17 @@ class IsaacSimStage:
 
         configure_carb_settings(headless, self._logger)
         _locate_physics_scene(self.stage, self._logger)
+
+    def sync_sensor_mounts(self) -> None:
+        """Move every camera / lidar mount to its body's current pose (see ``_collect_sensor_mounts``).
+
+        Local = body_world * inverse(mount_parent_world), USD row-vector convention.
+        """
+        tc = Usd.TimeCode.Default()
+        for mount, body, op in self._sensor_mounts:
+            body_world = UsdGeom.Xformable(body).ComputeLocalToWorldTransform(tc)
+            parent_world = UsdGeom.Xformable(mount.GetParent()).ComputeLocalToWorldTransform(tc)
+            op.Set(body_world * parent_world.GetInverse())
 
     def get_joint_states(self) -> Tuple[np.ndarray, np.ndarray]:
         """Read joint positions + velocities from the articulation handle.
