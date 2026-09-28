@@ -24,6 +24,13 @@ Brings up `move_group` + the WBC-configured RViz with the Genie's full
 mobile-base + dual-arm planning groups.  See `launch/wbc.launch.py` for
 the parameter knobs (workspace bounds, start-state tolerance, etc.).
 
+To let MoveIt Task Constructor nodes execute solutions through
+`move_group`, load the MTC capability:
+
+```bash
+ros2 launch genie_sim_moveit wbc.launch.py capabilities:=move_group/ExecuteTaskSolutionCapability
+```
+
 ---
 
 ## Architecture: planar + prismatic floating base
@@ -218,7 +225,7 @@ matches the simulator's planar workspace.
 | `config/kinematics.yaml`<br>`config/kinematics_vanilla.yaml` | bio_ik chassis_posture pins `[planar_joint/x, planar_joint/y, planar_joint/theta]` |
 | `config/moveit_controllers.yaml` | controller -> joint mapping |
 | `config/ros2_controllers.yaml` | hardware-side controller config |
-| `launch/wbc.launch.py` | `move_group` + RViz; sets `fix_start_state`, workspace bounds, joint-limit pad |
+| `launch/wbc.launch.py` | `move_group` + RViz; sets `fix_start_state`, workspace bounds, joint-limit pad; `capabilities:=` loads extra move_group plugins (e.g. MTC) |
 | `launch/moveit_launch_utils.py` | `moveit_joint_states_bridge_node()` factory |
 | `scripts/moveit_joint_states_bridge.py` | merged QoS bridge + ride-height JointState synthesiser |
 

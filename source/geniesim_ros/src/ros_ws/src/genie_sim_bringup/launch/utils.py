@@ -423,6 +423,28 @@ def common_declared_arguments() -> List[DeclareLaunchArgument]:
             description="Enable interactive markers for free-joint scene objects",
         )
     )
+    args.append(
+        DeclareLaunchArgument(
+            name="camera_tf",
+            default_value="true",
+            choices=["true", "false"],
+            description=(
+                "Publish a static TF <cameras[].frame_id> -> <cameras[].prim_path> (ROS optical "
+                "convention) for every scene-yaml camera with an extrinsic block"
+            ),
+        )
+    )
+    args.append(
+        DeclareLaunchArgument(
+            name="depth_point_cloud",
+            default_value="true",
+            choices=["true", "false"],
+            description=(
+                "Run depth_image_proc point_cloud_xyz_node for every scene-yaml camera with a "
+                "depth topic (skipped with a warning if depth_image_proc is not installed)"
+            ),
+        )
+    )
     return args
 
 
@@ -531,6 +553,100 @@ def make_rviz_node(*, rviz_config_file: Path, common_param: dict, ros_log_args: 
         arguments=["-d", str(rviz_config_file), *ros_log_args],
         parameters=[common_param],
     )
+
+
+def usd_camera_wxyz_to_ros_optical_xyzw(wxyz: Iterable[float]) -> Tuple[float, float, float, float]:
+    """Convert a scene-yaml camera ``extrinsic.wxyz`` to a ROS optical-frame quaternion.
+
+    The scene yaml stores the USD camera prim orientation (looks down -Z, +Y up).
+    Image headers are stamped with ``prim_path`` and consumers (depth_image_proc,
+    RViz) assume the ROS optical convention (looks down +Z, +Y down), which is the
+    USD pose post-multiplied by a 180° rotation about X:  q ⊗ (w=0, x=1, y=0, z=0).
+    """
+    w, x, y, z = (float(v) for v in wxyz)
+    # Hamilton product (w, x, y, z) ⊗ (0, 1, 0, 0) = (-x, w, z, -y); returned as xyzw.
+    return (w, z, -y, -x)
+
+
+def default_point_cloud_topic(depth_topic: str) -> str:
+    """``/ns/foo_depth`` -> ``/ns/foo_points``; any other name gets ``_points`` appended."""
+    base = depth_topic[: -len("_depth")] if depth_topic.endswith("_depth") else depth_topic
+    return f"{base}_points"
+
+
+def make_camera_nodes(
+    cameras: Iterable[dict],
+    *,
+    camera_tf: bool,
+    depth_point_cloud: bool,
+    common_param: dict,
+    ros_log_args: Iterable[str],
+) -> List[Node]:
+    """Build per-camera helper nodes from the scene yaml ``cameras`` list.
+
+    * ``camera_tf``: static TF ``frame_id -> prim_path`` from ``extrinsic``
+      (``xyz`` + ``wxyz``), rotated into the ROS optical convention.
+    * ``depth_point_cloud``: ``depth_image_proc/point_cloud_xyz_node`` on
+      ``<topic.depth>/image_raw`` + ``<topic.depth>/camera_info``, publishing
+      ``topic.points`` (default: ``_depth`` suffix replaced by ``_points``).
+    """
+    nodes: List[Node] = []
+    have_depth_proc = True
+    if depth_point_cloud:
+        try:
+            get_package_share_directory("depth_image_proc")
+        except PackageNotFoundError:
+            have_depth_proc = False
+            print(f"{ERR_COLOR}depth_image_proc not installed — skipping camera point clouds{RESET}")
+
+    for i, cam in enumerate(cameras or []):
+        if not isinstance(cam, dict):
+            continue
+        prim_path = str(cam.get("prim_path") or "")
+        frame_id = str(cam.get("frame_id") or "")
+        topic = cam.get("topic") if isinstance(cam.get("topic"), dict) else {}
+        extrinsic = cam.get("extrinsic") if isinstance(cam.get("extrinsic"), dict) else {}
+
+        if camera_tf and prim_path and frame_id and extrinsic.get("xyz") and extrinsic.get("wxyz"):
+            tx, ty, tz = (float(v) for v in extrinsic["xyz"])
+            qx, qy, qz, qw = usd_camera_wxyz_to_ros_optical_xyzw(extrinsic["wxyz"])
+            print(f"{MSG_COLOR}camera tf: {frame_id} -> {prim_path}{RESET}")
+            nodes.append(
+                Node(
+                    package="tf2_ros",
+                    executable="static_transform_publisher",
+                    name=f"camera_{i}_static_tf",
+                    output="log",
+                    arguments=[
+                        "--x", str(tx), "--y", str(ty), "--z", str(tz),
+                        "--qx", str(qx), "--qy", str(qy), "--qz", str(qz), "--qw", str(qw),
+                        "--frame-id", frame_id, "--child-frame-id", prim_path,
+                        *ros_log_args,
+                    ],
+                    parameters=[common_param],
+                )
+            )
+
+        depth_topic = str(topic.get("depth") or "")
+        if depth_point_cloud and have_depth_proc and depth_topic:
+            points_topic = str(topic.get("points") or default_point_cloud_topic(depth_topic))
+            print(f"{MSG_COLOR}camera point cloud: {depth_topic} -> {points_topic}{RESET}")
+            nodes.append(
+                Node(
+                    package="depth_image_proc",
+                    executable="point_cloud_xyz_node",
+                    name=f"camera_{i}_point_cloud_xyz",
+                    output="log",
+                    arguments=[*ros_log_args],
+                    parameters=[common_param],
+                    remappings=[
+                        ("image_rect", f"{depth_topic}/image_raw"),
+                        ("camera_info", f"{depth_topic}/camera_info"),
+                        ("points", points_topic),
+                    ],
+                )
+            )
+    return nodes
 
 
 def make_chassis_controller_node(

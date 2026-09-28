@@ -68,7 +68,21 @@ Common args declared here and forwarded to sub-launches:
 `scene`, `physics_hz`, `render_hz`, `headless`, `always_regenerate_robot_usd`,
 `physics_engine`, `physics_solver`, `robot_model`, `body`, `arm`, `gripper`,
 `use_sim_time`, `remap_tf`, `fake_slam`, `log_level`, `interaction_tools`,
-`launcher_config`.
+`camera_tf`, `depth_point_cloud`, `launcher_config`.
+
+### Per-camera helper nodes (`camera_tf`, `depth_point_cloud`)
+
+`app.launch.py` starts these for every entry in the scene yaml's `cameras:`
+list (`lu.make_camera_nodes`). Both default to `true`.
+
+| Arg | Node | Derived from |
+|---|---|---|
+| `camera_tf` | `tf2_ros/static_transform_publisher` `frame_id -> prim_path` | `extrinsic.xyz` + `extrinsic.wxyz` rotated 180° about X (USD camera -> ROS optical), so it matches the `prim_path` frame stamped on the image headers |
+| `depth_point_cloud` | `depth_image_proc/point_cloud_xyz_node` | `topic.depth` + `/image_raw` / `/camera_info` -> `topic.points` (default: `_depth` suffix replaced by `_points`) |
+
+Cameras without `frame_id`/`extrinsic` get no TF; cameras without
+`topic.depth` get no point cloud. If `depth_image_proc` is not installed,
+the point clouds are skipped and a warning is printed.
 
 ### `physics_isaacsim.launch.py`
 

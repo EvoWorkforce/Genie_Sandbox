@@ -343,6 +343,16 @@ def generate_launch_description():
                 )
             )
 
+        actions.extend(
+            lu.make_camera_nodes(
+                scene_info["scene_yaml"].get("cameras") or [],
+                camera_tf=lu.perform(context, "camera_tf") == "true",
+                depth_point_cloud=lu.perform(context, "depth_point_cloud") == "true",
+                common_param=common_param,
+                ros_log_args=ros_log_args,
+            )
+        )
+
         teleop = lu.perform(context, "teleop")
         print(f"{MSG_COLOR}teleop: {teleop}{RESET}")
         navigation = lu.perform(context, "navigation")

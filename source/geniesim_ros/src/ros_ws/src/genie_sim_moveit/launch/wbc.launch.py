@@ -39,6 +39,8 @@ def _launch_setup(context):
         "on",
     )
 
+    capabilities = context.perform_substitution(LaunchConfiguration("capabilities"))
+
     # A/B switch for the GenieBioIK "human prior" goals (torso-straight,
     # chassis-pin, head LookAt). kinematics.yaml ships the priors enabled;
     # kinematics_vanilla.yaml zeroes every weight so the plugin falls back
@@ -153,6 +155,10 @@ def _launch_setup(context):
                     # under the ompl pipeline namespace, because the request adapter
                     # is shared across pipelines.
                     "fix_start_state": True,
+                    # Extra move_group capability plugins (space-separated), e.g.
+                    # "move_group/ExecuteTaskSolutionCapability" so MoveIt Task
+                    # Constructor clients can call Task::execute().  Empty = none.
+                    "capabilities": capabilities,
                 },
             ],
             remappings=mlu.MOVEIT_MOVE_GROUP_REMAPPINGS,
@@ -324,6 +330,18 @@ def generate_launch_description():
     )
     ld.add_action(
         DeclareLaunchArgument("use_rviz", default_value="true"),
+    )
+    ld.add_action(
+        DeclareLaunchArgument(
+            "capabilities",
+            default_value="",
+            description=(
+                "Space-separated extra move_group capability plugins. Pass "
+                "``move_group/ExecuteTaskSolutionCapability`` (from "
+                "moveit_task_constructor_capabilities) to let MoveIt Task "
+                "Constructor nodes execute solutions through move_group."
+            ),
+        ),
     )
     ld.add_action(
         DeclareLaunchArgument(

@@ -9,6 +9,8 @@
 
   <depend>rclpy</depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>depth_image_proc</exec_depend>
 
   <exec_depend>genie_sim_engine</exec_depend>
   <exec_depend>genie_sim_robot_model</exec_depend>
