@@ -16,7 +16,6 @@ robot:
     z: 0.04
     theta: 0.0
   init_joint_pos:
-
     idx21_arm_l_joint1: 90    # left shoulder — tips arm down from T-pose
     idx22_arm_l_joint2: -70   # left shoulder — swings arm to the side before tipping
     idx24_arm_l_joint4: 0     # elbow straight
@@ -61,4 +60,4 @@ cameras:
     wxyz: [-0.59451, -0.386832, 0.378729, 0.594544]
 
 lidars: []
-scene: /workspace/evo_src/test_scene.usd
+scene: /workspace/evo_ws/evo_src/test_scene.usd
