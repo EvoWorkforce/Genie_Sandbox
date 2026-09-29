@@ -1,0 +1,11 @@
+sensors:
+  - head_front_camera
+head_front_camera:
+  sensor_plugin: occupancy_map_monitor/PointCloudOctomapUpdater
+  point_cloud_topic: /genie_sim/head_front_camera_points
+  max_range: 1.5
+  point_subsample: 1
+  padding_offset: 0.05
+  padding_scale: 1.0
+  max_update_rate: 5.0
+  filtered_cloud_topic: filtered_cloud
