@@ -5,7 +5,9 @@ head_front_camera:
   point_cloud_topic: /genie_sim/head_front_camera_points
   max_range: 1.5
   point_subsample: 1
-  padding_offset: 0.05
+  padding_offset: 0.1
   padding_scale: 1.0
-  max_update_rate: 5.0
+  max_update_rate: 1.0
   filtered_cloud_topic: filtered_cloud
+  octomap_resolution: 0.02
+  octomap_frame: odom

@@ -204,6 +204,69 @@
         <joint name="idx04_body_joint4" value="0"/>
         <joint name="idx05_body_joint5" value="0"/>
     </group_state>
+    <group_state name="T Pose" group="simple_body">
+        <joint name="idx01_body_joint1" value="0"/>
+        <joint name="idx02_body_joint2" value="0"/>
+        <joint name="idx03_body_joint3" value="0"/>
+        <joint name="idx04_body_joint4" value="0"/>
+        <joint name="idx05_body_joint5" value="0"/>
+    </group_state>
+    <!--
+        "ready": arms hanging relaxed alongside the torso, slightly away from it.
+        Derived from custom_scene.yaml's init_joint_pos (j1 = +/-90 deg,
+        j2 = -70 deg, rest 0) so it stays on the same IK branch: j2 closes the
+        abduction to ~8 deg (-78 deg) and j4 adds a slight ~11 deg elbow bend.
+        Grippers point straight down, hands ~0.31 m out from the torso centre
+        (torso half-width 0.165 m), ~0.69 m below the shoulders. The right arm
+        mirrors the left: joints 1/3/5/7 negated, joints 2/4/6 identical. The
+        wbc_fixed_arm_* variants keep the body upright.
+    -->
+    <group_state name="ready" group="simple_arm_l">
+        <joint name="idx21_arm_l_joint1" value="1.5708"/>
+        <joint name="idx22_arm_l_joint2" value="-1.40"/>
+        <joint name="idx23_arm_l_joint3" value="0"/>
+        <joint name="idx24_arm_l_joint4" value="-0.2"/>
+        <joint name="idx25_arm_l_joint5" value="0"/>
+        <joint name="idx26_arm_l_joint6" value="0"/>
+        <joint name="idx27_arm_l_joint7" value="0"/>
+    </group_state>
+    <group_state name="ready" group="wbc_fixed_arm_l">
+        <joint name="idx01_body_joint1" value="0"/>
+        <joint name="idx02_body_joint2" value="0"/>
+        <joint name="idx03_body_joint3" value="0"/>
+        <joint name="idx04_body_joint4" value="0"/>
+        <joint name="idx05_body_joint5" value="0"/>
+        <joint name="idx21_arm_l_joint1" value="1.5708"/>
+        <joint name="idx22_arm_l_joint2" value="-1.40"/>
+        <joint name="idx23_arm_l_joint3" value="0"/>
+        <joint name="idx24_arm_l_joint4" value="-0.2"/>
+        <joint name="idx25_arm_l_joint5" value="0"/>
+        <joint name="idx26_arm_l_joint6" value="0"/>
+        <joint name="idx27_arm_l_joint7" value="0"/>
+    </group_state>
+    <group_state name="ready" group="simple_arm_r">
+        <joint name="idx61_arm_r_joint1" value="-1.5708"/>
+        <joint name="idx62_arm_r_joint2" value="-1.40"/>
+        <joint name="idx63_arm_r_joint3" value="0"/>
+        <joint name="idx64_arm_r_joint4" value="-0.2"/>
+        <joint name="idx65_arm_r_joint5" value="0"/>
+        <joint name="idx66_arm_r_joint6" value="0"/>
+        <joint name="idx67_arm_r_joint7" value="0"/>
+    </group_state>
+    <group_state name="ready" group="wbc_fixed_arm_r">
+        <joint name="idx01_body_joint1" value="0"/>
+        <joint name="idx02_body_joint2" value="0"/>
+        <joint name="idx03_body_joint3" value="0"/>
+        <joint name="idx04_body_joint4" value="0"/>
+        <joint name="idx05_body_joint5" value="0"/>
+        <joint name="idx61_arm_r_joint1" value="-1.5708"/>
+        <joint name="idx62_arm_r_joint2" value="-1.40"/>
+        <joint name="idx63_arm_r_joint3" value="0"/>
+        <joint name="idx64_arm_r_joint4" value="-0.2"/>
+        <joint name="idx65_arm_r_joint5" value="0"/>
+        <joint name="idx66_arm_r_joint6" value="0"/>
+        <joint name="idx67_arm_r_joint7" value="0"/>
+    </group_state>
     <!--END EFFECTOR: Purpose: Represent information about an end effector.-->
     <!--
         IMPORTANT: do NOT declare an <end_effector> on body_link5 (or any other

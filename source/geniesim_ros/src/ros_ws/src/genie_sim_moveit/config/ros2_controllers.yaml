@@ -472,6 +472,7 @@ wbc_fixed_arms_controller:
       - idx65_arm_r_joint5
       - idx66_arm_r_joint6
       - idx67_arm_r_joint7
+    allow_partial_joints_goal: true
     command_interfaces:
       - position
     state_interfaces:

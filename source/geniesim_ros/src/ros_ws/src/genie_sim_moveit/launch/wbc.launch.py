@@ -252,8 +252,9 @@ def _launch_setup(context):
             executable="spawner",
             arguments=[
                 "joint_state_broadcaster",
-                "simple_arm_l_controller",
-                "simple_arm_r_controller",
+                # "simple_arm_l_controller",
+                # "simple_arm_r_controller",
+                "wbc_fixed_arms_controller",
                 "simple_waist_controller",
                 "simple_torso_controller",
                 # simple_body_controller is configured but NOT auto-spawned:
