@@ -23,7 +23,7 @@ geniesim ros build dev
 source devel/setup.bash
 
 ros2 launch genie_sim_bringup app.launch.py \
-  scene:=test_scene \
+  scene:=custom_scene \
   launcher_config:=launcher_ovrtx_isaac_physx \
   headless:=false
 ```
